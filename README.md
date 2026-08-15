@@ -60,7 +60,7 @@ Cloud sync includes completed days, XP, total checkpoints, levels, streak histor
 4. Add these values under **Vercel → Rise & Rep → Settings → Environment Variables**. Use the fields from Firebase's web-app configuration, and apply them to Production and Preview:
 
    - `FIREBASE_API_KEY`
-   - `FIREBASE_AUTH_DOMAIN`
+   - `FIREBASE_AUTH_DOMAIN` — set this to `rise-and-rep.vercel.app`, not the default `firebaseapp.com` domain
    - `FIREBASE_PROJECT_ID`
    - `FIREBASE_STORAGE_BUCKET`
    - `FIREBASE_MESSAGING_SENDER_ID`
@@ -68,7 +68,8 @@ Cloud sync includes completed days, XP, total checkpoints, levels, streak histor
    - `FIREBASE_MEASUREMENT_ID` (optional)
 
 5. Redeploy Rise & Rep so Vercel Functions receive the environment variables.
-6. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
+6. In the Google Cloud Console OAuth client used by Firebase Authentication, add `https://rise-and-rep.vercel.app/__/auth/handler` under **Authorized redirect URIs**. The Vercel rewrite proxies this helper path transparently to Firebase so Chrome and Safari do not lose sign-in state to cross-site storage partitioning.
+7. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
 
    ```sh
    npx firebase-tools login
