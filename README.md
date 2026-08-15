@@ -46,6 +46,27 @@ The notification UI is safe to deploy before the service is configured: it will 
 
 Keep the VAPID private key, Redis token, and cron secret out of Git. `.env*` files are ignored by default.
 
+## Google sign-in and cloud progress
+
+Firebase Authentication and Cloud Firestore provide the small cloud layer. The workout remains local-first: it opens and records progress without a connection, then merges durable progress after the signed-in device reconnects.
+
+Cloud sync includes completed days, XP, total checkpoints, levels, streak history, and earned trophies. Active workout timers and notification subscriptions remain device-specific.
+
+### One-time Firebase setup
+
+1. In the [Firebase console](https://console.firebase.google.com/project/rise-and-rep/authentication/providers), open **Authentication → Sign-in method**, choose **Google**, and enable it.
+2. In **Authentication → Settings → Authorized domains**, add `rise-and-rep.vercel.app`.
+3. Open **Firestore Database**, create the database in Production mode, and choose the region you prefer.
+4. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
+
+   ```sh
+   npx firebase-tools login
+   npx firebase-tools use rise-and-rep
+   npx firebase-tools deploy --only firestore:rules
+   ```
+
+Each account can only read and write its own `users/{uid}` document. The Firebase web configuration and API key are intentionally public client identifiers; private progress is protected by Authentication and the Firestore rules.
+
 ## Daily behavior
 
 - Monday, Wednesday, Friday, Saturday: full calisthenics circuit.
@@ -60,5 +81,7 @@ Keep the VAPID private key, Redis token, and cron secret out of Git. `.env*` fil
 - The Morning Reminder card registers or removes a Web Push subscription for the current device.
 - The scheduled reminder uses a Vercel Function and Redis because iOS cannot reliably run an offline web timer after the PWA closes.
 - Workout screens remain offline-capable. The device needs an internet connection when a push is delivered.
+- Google sign-in uses a user-initiated popup, avoiding cross-site redirect-storage problems on Safari while the app is hosted on Vercel.
+- Signed-in progress is merged transactionally, so signing in on a second device does not overwrite completed history already saved on either device.
 
-Progress currently stays on one browser/device. Add an account/database later if cross-device sync becomes useful.
+Without sign-in, progress stays on the current browser/device. After Google sign-in, durable progress follows the same account across devices.

@@ -175,6 +175,71 @@ input:focus-visible {
   cursor: pointer;
 }
 
+.account-button {
+  position: relative;
+  display: inline-flex;
+  min-width: 42px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 9px;
+  overflow: hidden;
+  border: 2px solid var(--blue);
+  border-radius: 7px;
+  color: var(--blue);
+  background: var(--white);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.account-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.account-button img {
+  width: 36px;
+  height: 36px;
+  margin: -1px -7px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.account-button i {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--white);
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.account-button.is-signed-in {
+  border-color: var(--green);
+}
+
+.account-button.is-syncing::after {
+  position: absolute;
+  inset: 3px;
+  border: 2px solid transparent;
+  border-top-color: var(--orange);
+  border-radius: 6px;
+  content: "";
+  pointer-events: none;
+  animation: sync-spin 850ms linear infinite;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -1726,6 +1791,139 @@ h3 {
   color: var(--blue);
 }
 
+.account-sheet .eyebrow {
+  margin-bottom: 7px;
+}
+
+.account-sheet h2 {
+  font-size: clamp(36px, 11vw, 50px);
+  line-height: 0.9;
+}
+
+.account-profile {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  margin: 17px 0;
+  padding: 12px;
+  border-block: 2px solid var(--blue);
+  background: var(--blue-wash);
+}
+
+.account-avatar {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--white);
+  background: var(--blue);
+  font-family: var(--display);
+  font-size: 25px;
+  font-weight: 900;
+  transform: rotate(-2deg);
+}
+
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-profile strong,
+.account-profile span {
+  display: block;
+}
+
+.account-profile strong {
+  color: var(--blue);
+  font-family: var(--display);
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.account-profile span {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-status {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin: 14px 0 10px;
+  padding: 11px 12px;
+  border: 1px solid #a8d7c7;
+  border-radius: 8px;
+  color: var(--green);
+  background: var(--green-wash);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.cloud-status i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.cloud-status.has-error {
+  border-color: #f3b79a;
+  color: var(--orange-dark);
+  background: #fff0e8;
+}
+
+.account-sheet .account-footnote {
+  margin-bottom: 15px;
+  font-size: 11px;
+}
+
+.google-button {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--white);
+  background: var(--blue);
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.google-button svg {
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 3px;
+  background: var(--white);
+}
+
+.google-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.google-button:active {
+  transform: scale(0.99);
+}
+
 .toast {
   position: fixed;
   z-index: 300;
@@ -1771,6 +1969,10 @@ h3 {
 @keyframes view-in {
   from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sync-spin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes workout-in {

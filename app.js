@@ -1,4 +1,5 @@
 const STORAGE_KEY = "riseAndRep.v1";
+const CLOUD_PROFILE_KEY = "riseAndRep.cloudProfile.v1";
 const WORKOUT_DAYS = new Set([1, 3, 5, 6]);
 const REMINDER_TIME = "6:30 AM";
 const REMINDER_TIME_ZONE = "Lagos time";
@@ -39,6 +40,14 @@ let deferredInstallPrompt = null;
 let restTimer = null;
 let setTimer = null;
 let toastTimer = null;
+let cloudModule = null;
+let cloudModulePromise = null;
+let cloudReady = false;
+let cloudUser = loadCloudProfile();
+let cloudAuthenticated = false;
+let cloudStatus = navigator.onLine ? "local" : "offline";
+let cloudSyncTimer = null;
+let lastCloudFingerprint = "";
 
 const todayView = document.querySelector("#todayView");
 const progressView = document.querySelector("#progressView");
@@ -48,6 +57,7 @@ const sheetRoot = document.querySelector("#sheetRoot");
 const toast = document.querySelector("#toast");
 const installButton = document.querySelector("#installButton");
 const connectionBadge = document.querySelector("#connectionBadge");
+const accountButton = document.querySelector("#accountButton");
 
 function defaultData() {
   return {
@@ -77,8 +87,9 @@ function loadData() {
   }
 }
 
-function saveData() {
+function saveData(syncCloud = true) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  if (syncCloud) scheduleCloudSync();
 }
 
 function dateKey(date = new Date()) {
@@ -703,6 +714,224 @@ function updateConnectionStatus(announce = false) {
   if (announce) showToast(offline ? "Offline mode. Your quest and progress still work." : "Back online. Everything is up to date.");
 }
 
+function loadCloudProfile() {
+  try {
+    return JSON.parse(localStorage.getItem(CLOUD_PROFILE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function saveCloudProfile(profile) {
+  if (profile) localStorage.setItem(CLOUD_PROFILE_KEY, JSON.stringify(profile));
+  else localStorage.removeItem(CLOUD_PROFILE_KEY);
+}
+
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;"
+  })[character]);
+}
+
+function durableProgress() {
+  return {
+    schemaVersion: 1,
+    completedDays: data.completedDays,
+    earnedAchievements: data.earnedAchievements
+  };
+}
+
+function applyCloudProgress(remoteProgress) {
+  if (!window.RiseRepProgress || !remoteProgress) return;
+  const before = window.RiseRepProgress.fingerprint(durableProgress());
+  const merged = window.RiseRepProgress.mergeDurableProgress(durableProgress(), remoteProgress);
+  const after = window.RiseRepProgress.fingerprint(merged);
+
+  if (before !== after) {
+    data.completedDays = merged.completedDays;
+    data.earnedAchievements = merged.earnedAchievements;
+    const totals = window.RiseRepProgress.deriveTotals(merged.completedDays);
+    data.xp = totals.xp;
+    data.totalSessions = totals.totalSessions;
+    data.totalSets = totals.totalSets;
+    data.longestStreak = calculateLongestStreak();
+    saveData(false);
+    renderAll();
+  }
+
+  lastCloudFingerprint = after;
+}
+
+function setCloudStatus(status, detail = "") {
+  cloudStatus = status;
+  updateAccountButton();
+  const statusNode = document.querySelector("#cloudStatusText");
+  if (statusNode) statusNode.textContent = detail || cloudStatusCopy();
+}
+
+function cloudStatusCopy() {
+  if (!navigator.onLine) return "Offline — saved progress will sync when you reconnect.";
+  if (cloudStatus === "connecting") return "Connecting securely…";
+  if (cloudStatus === "syncing") return "Merging progress across your devices…";
+  if (cloudStatus === "synced") return "Progress synced across your signed-in devices.";
+  if (cloudStatus === "error") return "Sync paused. Your progress is still safe on this device.";
+  return cloudUser ? "Ready to sync your progress." : "Sign in once, then carry your streak between devices.";
+}
+
+function updateAccountButton() {
+  if (!accountButton) return;
+  const name = cloudUser?.displayName || "your account";
+  accountButton.classList.toggle("is-signed-in", Boolean(cloudUser));
+  accountButton.classList.toggle("is-syncing", cloudStatus === "syncing" || cloudStatus === "connecting");
+  accountButton.setAttribute("aria-label", cloudUser ? `Open sync account for ${name}` : "Sign in and sync progress");
+
+  if (cloudUser?.photoURL) {
+    accountButton.innerHTML = `<img src="${escapeHtml(cloudUser.photoURL)}" alt="" referrerpolicy="no-referrer"><i aria-hidden="true"></i>`;
+  } else {
+    accountButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16.5h8M9 8.5a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z"/><path d="M5.5 19c.4-3 2.6-4.5 6.5-4.5s6.1 1.5 6.5 4.5"/></svg><span>${cloudUser ? "YOU" : "SYNC"}</span>`;
+  }
+}
+
+async function initCloudSync() {
+  if (cloudReady && cloudModule) return cloudModule;
+  if (cloudModulePromise) return cloudModulePromise;
+  if (!navigator.onLine) throw new Error("Connect to the internet to sign in.");
+
+  setCloudStatus("connecting");
+  cloudModulePromise = import("./firebase-sync.js").then(async (module) => {
+    cloudModule = module;
+    await module.initializeCloud({
+      onAuthChange(user) {
+        cloudAuthenticated = Boolean(user);
+        cloudUser = user;
+        saveCloudProfile(user);
+        lastCloudFingerprint = "";
+        setCloudStatus(user ? "syncing" : "local");
+        if (user) scheduleCloudSync(0);
+        if (document.querySelector(".account-sheet")) showAccountSheet();
+      },
+      onRemoteProgress(progress, metadata) {
+        applyCloudProgress(progress);
+        if (!metadata.fromCache) setCloudStatus("synced");
+      },
+      onStatus(status, detail) {
+        setCloudStatus(status, detail);
+      }
+    });
+    cloudReady = true;
+    return module;
+  }).catch((error) => {
+    cloudModule = null;
+    cloudModulePromise = null;
+    cloudReady = false;
+    setCloudStatus("error", error.message);
+    throw error;
+  });
+
+  return cloudModulePromise;
+}
+
+function scheduleCloudSync(delay = 900) {
+  if (!cloudModule || !cloudAuthenticated || !navigator.onLine || !window.RiseRepProgress) return;
+  const fingerprint = window.RiseRepProgress.fingerprint(durableProgress());
+  if (fingerprint === lastCloudFingerprint) return;
+
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(async () => {
+    try {
+      const progress = durableProgress();
+      const merged = await cloudModule.syncProgress(progress);
+      applyCloudProgress(merged);
+      lastCloudFingerprint = window.RiseRepProgress.fingerprint(durableProgress());
+      setCloudStatus("synced");
+    } catch (error) {
+      setCloudStatus("error", error.message);
+    }
+  }, delay);
+}
+
+function accountProfileHtml() {
+  const fallback = (cloudUser?.displayName || "R").trim().charAt(0).toUpperCase();
+  const avatar = cloudUser?.photoURL
+    ? `<img src="${escapeHtml(cloudUser.photoURL)}" alt="" referrerpolicy="no-referrer">`
+    : `<span aria-hidden="true">${escapeHtml(fallback)}</span>`;
+  return `<div class="account-profile">
+    <div class="account-avatar">${avatar}</div>
+    <div><strong>${escapeHtml(cloudUser?.displayName || "Rise & Rep player")}</strong><span>${escapeHtml(cloudUser?.email || "Signed-in account")}</span></div>
+  </div>`;
+}
+
+function showAccountSheet() {
+  const signedIn = Boolean(cloudUser);
+  const signInReady = cloudReady && Boolean(cloudModule);
+  sheetRoot.innerHTML = `<div class="sheet-backdrop" role="presentation"><section class="sheet account-sheet" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+    <p class="eyebrow">Cloud Save</p>
+    <h2 id="accountTitle">${signedIn ? "Your Progress Travels." : "Keep Every Rep."}</h2>
+    ${signedIn ? accountProfileHtml() : `<p>Sign in with Google to merge completed quests, XP, streak history, levels, and trophies across your phone and iPad.</p>`}
+    <div class="cloud-status ${cloudStatus === "error" ? "has-error" : ""}"><i aria-hidden="true"></i><span id="cloudStatusText">${escapeHtml(cloudStatusCopy())}</span></div>
+    <p class="account-footnote">Active workout timers and notification permission stay on each device. Your local workout still works offline.</p>
+    <div class="sheet-actions">
+      ${signedIn ? `<button id="syncNow" class="google-button" type="button">SYNC NOW <span aria-hidden="true">↻</span></button><button id="signOutAccount" class="secondary-button" type="button">SIGN OUT</button>` : `<button id="signInGoogle" class="google-button" type="button" ${signInReady ? "" : "disabled"}><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M22.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h6a5.2 5.2 0 0 1-2.2 3.3v2.8h3.6c2.1-2 3.2-4.8 3.2-8.2Z"/><path fill="#34a853" d="M12 23c3 0 5.5-1 7.4-2.6l-3.6-2.8c-1 .7-2.3 1.1-3.8 1.1-2.9 0-5.4-2-6.3-4.6H2v2.9A11.2 11.2 0 0 0 12 23Z"/><path fill="#fbbc05" d="M5.7 14.1a6.7 6.7 0 0 1 0-4.2V7H2a11.2 11.2 0 0 0 0 10l3.7-2.9Z"/><path fill="#ea4335" d="M12 5.3c1.6 0 3 .6 4.2 1.7l3.2-3.2A10.7 10.7 0 0 0 2 7l3.7 2.9C6.6 7.2 9.1 5.3 12 5.3Z"/></svg>${signInReady ? "CONTINUE WITH GOOGLE" : "PREPARING SIGN-IN…"}</button>`}
+      <button id="closeAccountSheet" class="secondary-button" type="button">NOT NOW</button>
+    </div>
+  </section></div>`;
+
+  document.querySelector("#closeAccountSheet")?.addEventListener("click", closeSheet);
+  document.querySelector(".sheet-backdrop")?.addEventListener("click", (event) => {
+    if (event.target.classList.contains("sheet-backdrop")) closeSheet();
+  });
+  document.querySelector("#signInGoogle")?.addEventListener("click", handleGoogleSignIn);
+  document.querySelector("#signOutAccount")?.addEventListener("click", handleCloudSignOut);
+  document.querySelector("#syncNow")?.addEventListener("click", () => {
+    lastCloudFingerprint = "";
+    scheduleCloudSync(0);
+  });
+  if (!signedIn && navigator.onLine && !signInReady) {
+    initCloudSync().then(() => {
+      if (document.querySelector(".account-sheet")) showAccountSheet();
+    }).catch(() => {});
+  }
+}
+
+async function handleGoogleSignIn() {
+  const button = document.querySelector("#signInGoogle");
+  if (!navigator.onLine) {
+    showToast("Connect to the internet to sign in.");
+    return;
+  }
+  if (!cloudReady || !cloudModule) {
+    showToast("Sign-in is still preparing. Try again in a moment.");
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.lastChild.textContent = " SIGNING IN…";
+  }
+
+  try {
+    await cloudModule.signInWithGoogle();
+    showToast("Google account connected. Progress is syncing.");
+  } catch (error) {
+    if (error.code !== "auth/popup-closed-by-user") showToast(error.message || "Google sign-in did not finish.");
+    showAccountSheet();
+  }
+}
+
+async function handleCloudSignOut() {
+  try {
+    const module = await initCloudSync();
+    await module.signOutCurrentUser();
+    closeSheet();
+    showToast("Signed out. Progress remains safe on this device.");
+  } catch (error) {
+    showToast(error.message || "Could not sign out.");
+  }
+}
+
 function isStandaloneApp() {
   return window.matchMedia("(display-mode: standalone)").matches || Boolean(window.navigator.standalone);
 }
@@ -885,6 +1114,7 @@ function closeSheet() {
 
 document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => switchTab(item.dataset.tab)));
 document.querySelector("[data-tab-target='today']").addEventListener("click", () => switchTab("today"));
+accountButton?.addEventListener("click", showAccountSheet);
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -927,7 +1157,15 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   });
 }
 
-window.addEventListener("online", () => updateConnectionStatus(true));
-window.addEventListener("offline", () => updateConnectionStatus(true));
+window.addEventListener("online", () => {
+  updateConnectionStatus(true);
+  initCloudSync().then(() => scheduleCloudSync(0)).catch(() => {});
+});
+window.addEventListener("offline", () => {
+  updateConnectionStatus(true);
+  setCloudStatus("offline");
+});
 updateConnectionStatus();
+updateAccountButton();
 renderAll();
+if (navigator.onLine) initCloudSync().catch(() => {});

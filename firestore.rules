@@ -1,0 +1,38 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      function ownsDocument() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function hasValidShape() {
+        return request.resource.data.keys().hasOnly([
+          'schemaVersion',
+          'completedDays',
+          'earnedAchievements',
+          'profile',
+          'updatedAt'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.completedDays is map
+        && request.resource.data.completedDays.size() <= 3650
+        && request.resource.data.earnedAchievements is map
+        && request.resource.data.earnedAchievements.size() <= 20
+        && request.resource.data.profile is map
+        && request.resource.data.profile.keys().hasOnly(['displayName', 'email', 'photoURL'])
+        && request.resource.data.profile.displayName is string
+        && request.resource.data.profile.displayName.size() <= 100
+        && request.resource.data.profile.email is string
+        && request.resource.data.profile.email.size() <= 320
+        && request.resource.data.profile.photoURL is string
+        && request.resource.data.profile.photoURL.size() <= 2048;
+      }
+
+      allow read: if ownsDocument();
+      allow create, update: if ownsDocument() && hasValidShape();
+      allow delete: if ownsDocument();
+    }
+  }
+}
