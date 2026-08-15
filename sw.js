@@ -1,6 +1,6 @@
 const CACHE_PREFIX = "rise-rep-";
-const STATIC_CACHE = `${CACHE_PREFIX}static-v5`;
-const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-v5`;
+const STATIC_CACHE = `${CACHE_PREFIX}static-v6`;
+const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-v6`;
 const ASSETS = [
   "./",
   "./index.html",
@@ -49,6 +49,11 @@ self.addEventListener("fetch", (event) => {
 
   if (requestUrl.origin !== self.location.origin) return;
 
+  if (requestUrl.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith((async () => {
     const cached = await caches.match(event.request);
     const network = fetch(event.request).then(async (response) => {
@@ -64,4 +69,40 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() || {};
+  } catch {
+    payload = { body: event.data?.text() };
+  }
+
+  const title = payload.title || "Rise & Rep";
+  const options = {
+    body: payload.body || "Your morning quest is ready.",
+    icon: payload.icon || "/assets/icon-192.png",
+    badge: payload.badge || "/assets/icon-180.png",
+    tag: payload.tag || "rise-and-rep-morning",
+    renotify: true,
+    data: { url: payload.url || "/" }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destination = new URL(event.notification.data?.url || "/", self.location.origin).href;
+
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if ("focus" in client) {
+        if ("navigate" in client) await client.navigate(destination);
+        return client.focus();
+      }
+    }
+    return clients.openWindow ? clients.openWindow(destination) : undefined;
+  })());
 });

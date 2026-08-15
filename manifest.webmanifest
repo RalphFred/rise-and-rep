@@ -2,6 +2,7 @@
   "name": "Rise & Rep — Morning Fitness Game",
   "short_name": "Rise & Rep",
   "description": "A small daily calisthenics game for building a morning movement habit.",
+  "id": "/",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f7f8f5",

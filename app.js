@@ -1,5 +1,7 @@
 const STORAGE_KEY = "riseAndRep.v1";
 const WORKOUT_DAYS = new Set([1, 3, 5, 6]);
+const REMINDER_TIME = "6:30 AM";
+const REMINDER_TIME_ZONE = "Lagos time";
 
 const workoutMoves = [
   { name: "Quick Warm-Up", visual: "warmup", sets: 1, target: "2–3", unit: "minutes", kind: "manual", cue: "Arm circles, shoulder rolls, then march or jump lightly in place." },
@@ -55,6 +57,7 @@ function defaultData() {
     totalSets: 0,
     longestStreak: 0,
     earnedAchievements: {},
+    reminders: { enabled: false },
     session: null
   };
 }
@@ -62,7 +65,13 @@ function defaultData() {
 function loadData() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return { ...defaultData(), ...stored, completedDays: stored?.completedDays || {}, earnedAchievements: stored?.earnedAchievements || {} };
+    return {
+      ...defaultData(),
+      ...stored,
+      completedDays: stored?.completedDays || {},
+      earnedAchievements: stored?.earnedAchievements || {},
+      reminders: { ...defaultData().reminders, ...(stored?.reminders || {}) }
+    };
   } catch {
     return defaultData();
   }
@@ -270,6 +279,8 @@ function renderToday() {
           <div class="block-dots" aria-label="${progression.sessionsIntoWeek} of 4 circuits complete in this block">${Array.from({ length: 4 }, (_, index) => `<i class="${index < progression.sessionsIntoWeek ? "is-done" : ""}"></i>`).join("")}</div>
           <p class="progression-next">${nextProgressionSummary()}</p>
         </div>
+        <div class="section-header reminder-heading"><h2>Morning Reminder</h2><span>${REMINDER_TIME} · ${REMINDER_TIME_ZONE}</span></div>
+        ${reminderCardHtml()}
         <div class="section-header"><h2>Level ${level.level}</h2><span>${level.remaining} XP to level up</span></div>
         <div class="level-block">
           <div class="level-line"><strong>${level.title}</strong><span>${level.levelXp} / 500 XP</span></div>
@@ -282,6 +293,8 @@ function renderToday() {
     if (complete) switchTab("progress");
     else startOrResumeQuest();
   });
+  document.querySelector("#reminderToggle")?.addEventListener("click", toggleMorningReminder);
+  syncReminderStatus();
 }
 
 function renderProgress() {
@@ -690,8 +703,165 @@ function updateConnectionStatus(announce = false) {
   if (announce) showToast(offline ? "Offline mode. Your quest and progress still work." : "Back online. Everything is up to date.");
 }
 
+function isStandaloneApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || Boolean(window.navigator.standalone);
+}
+
+function isIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function remindersSupported() {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && location.protocol !== "file:";
+}
+
+function reminderCardHtml() {
+  const supported = remindersSupported();
+  const enabled = supported && data.reminders.enabled;
+  const status = !supported
+    ? "Push is not available in this browser."
+    : enabled
+      ? "Your wake-up call is armed."
+      : "A small nudge before the day gets noisy.";
+
+  return `<article id="reminderCard" class="reminder-card ${enabled ? "is-enabled" : ""}">
+    <div class="reminder-mark" aria-hidden="true">
+      <svg viewBox="0 0 44 44" role="img"><path d="M22 7v5M8.6 12.6l3.5 3.5M35.4 12.6l-3.5 3.5M5 25h5M34 25h5"/><path d="M13 29a9 9 0 1 1 18 0"/><path d="M9 29h26M14 35h16"/></svg>
+    </div>
+    <div class="reminder-copy">
+      <strong id="reminderStatus">${enabled ? "Reminder on" : "Daily wake-up"}</strong>
+      <span id="reminderDetail">${status}</span>
+      <small>Requires internet when the push arrives.</small>
+    </div>
+    <button id="reminderToggle" class="reminder-toggle" type="button" aria-pressed="${enabled}" ${supported ? "" : "disabled"}>
+      ${enabled ? "TURN OFF" : "ENABLE"}
+    </button>
+  </article>`;
+}
+
+function setReminderCardState(enabled, detail) {
+  const card = document.querySelector("#reminderCard");
+  const status = document.querySelector("#reminderStatus");
+  const copy = document.querySelector("#reminderDetail");
+  const button = document.querySelector("#reminderToggle");
+  if (!card || !status || !copy || !button) return;
+
+  card.classList.toggle("is-enabled", enabled);
+  status.textContent = enabled ? "Reminder on" : "Daily wake-up";
+  copy.textContent = detail || (enabled ? "Your wake-up call is armed." : "A small nudge before the day gets noisy.");
+  button.textContent = enabled ? "TURN OFF" : "ENABLE";
+  button.setAttribute("aria-pressed", String(enabled));
+  button.disabled = false;
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+}
+
+async function syncReminderStatus() {
+  if (!remindersSupported()) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    const enabled = Boolean(subscription && Notification.permission === "granted");
+    data.reminders.enabled = enabled;
+    saveData();
+    setReminderCardState(enabled);
+  } catch {
+    setReminderCardState(false, "Could not check reminder status.");
+  }
+}
+
+async function toggleMorningReminder() {
+  const button = document.querySelector("#reminderToggle");
+  if (!button || button.disabled || !remindersSupported()) return;
+
+  if (isIOSDevice() && !isStandaloneApp()) {
+    showInstallSheet();
+    showToast("Install Rise & Rep first, then enable reminders from the app.");
+    return;
+  }
+
+  if (!navigator.onLine) {
+    showToast("Connect to the internet to change reminders.");
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "WORKING…";
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+
+    if (existing) {
+      const response = await fetch("/api/push-subscription", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: existing.endpoint })
+      });
+      if (!response.ok) throw new Error("Could not turn off this reminder.");
+      await existing.unsubscribe();
+      data.reminders.enabled = false;
+      saveData();
+      setReminderCardState(false, "Morning reminders are off on this device.");
+      showToast("Morning reminder turned off.");
+      return;
+    }
+
+    const configResponse = await fetch("/api/push-config", { cache: "no-store" });
+    const config = await configResponse.json().catch(() => ({}));
+    if (!configResponse.ok || !config.publicKey) throw new Error(config.message || "Morning reminders are not configured yet.");
+
+    if (Notification.permission === "denied") {
+      throw new Error("Notifications are blocked. Allow Rise & Rep in Settings → Notifications.");
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") throw new Error("Notifications were not allowed.");
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(config.publicKey)
+    });
+
+    const response = await fetch("/api/push-subscription", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: subscription.toJSON() })
+    });
+
+    if (!response.ok) {
+      await subscription.unsubscribe();
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "Could not save this device’s reminder.");
+    }
+
+    data.reminders.enabled = true;
+    saveData();
+    setReminderCardState(true);
+    await registration.showNotification("Rise & Rep reminder enabled", {
+      body: `See you tomorrow at ${REMINDER_TIME} (${REMINDER_TIME_ZONE}).`,
+      icon: "/assets/icon-192.png",
+      badge: "/assets/icon-180.png",
+      tag: "rise-and-rep-enabled",
+      data: { url: "/" }
+    });
+    showToast("Morning reminder enabled.");
+  } catch (error) {
+    setReminderCardState(false, error.message || "Could not enable reminders.");
+    showToast(error.message || "Could not enable reminders.");
+  } finally {
+    const currentButton = document.querySelector("#reminderToggle");
+    if (currentButton) currentButton.disabled = false;
+  }
+}
+
 function showInstallSheet() {
-  const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isiOS = isIOSDevice();
   const localPreview = location.protocol === "file:";
   const installCopy = localPreview
     ? "You’re viewing the local preview. Upload the Rise & Rep folder to an HTTPS static host first; then reopen the hosted URL and install it from this button."
