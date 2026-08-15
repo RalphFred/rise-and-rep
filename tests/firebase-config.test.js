@@ -1,7 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { publicFirebaseConfig } = require("../api/firebase-config");
+const { normalizeAuthDomain, publicFirebaseConfig } = require("../api/firebase-config");
+
+test("Firebase auth domain strips protocols and paths", () => {
+  assert.equal(normalizeAuthDomain("https://rise-and-rep.vercel.app/"), "rise-and-rep.vercel.app");
+  assert.equal(normalizeAuthDomain("rise-and-rep.vercel.app"), "rise-and-rep.vercel.app");
+});
 
 test("Firebase config reports missing environment without exposing variable names to clients", () => {
   const result = publicFirebaseConfig({});
