@@ -57,7 +57,18 @@ Cloud sync includes completed days, XP, total checkpoints, levels, streak histor
 1. In the [Firebase console](https://console.firebase.google.com/project/rise-and-rep/authentication/providers), open **Authentication → Sign-in method**, choose **Google**, and enable it.
 2. In **Authentication → Settings → Authorized domains**, add `rise-and-rep.vercel.app`.
 3. Open **Firestore Database**, create the database in Production mode, and choose the region you prefer.
-4. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
+4. Add these values under **Vercel → Rise & Rep → Settings → Environment Variables**. Use the fields from Firebase's web-app configuration, and apply them to Production and Preview:
+
+   - `FIREBASE_API_KEY`
+   - `FIREBASE_AUTH_DOMAIN`
+   - `FIREBASE_PROJECT_ID`
+   - `FIREBASE_STORAGE_BUCKET`
+   - `FIREBASE_MESSAGING_SENDER_ID`
+   - `FIREBASE_APP_ID`
+   - `FIREBASE_MEASUREMENT_ID` (optional)
+
+5. Redeploy Rise & Rep so Vercel Functions receive the environment variables.
+6. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
 
    ```sh
    npx firebase-tools login
@@ -65,7 +76,7 @@ Cloud sync includes completed days, XP, total checkpoints, levels, streak histor
    npx firebase-tools deploy --only firestore:rules
    ```
 
-Each account can only read and write its own `users/{uid}` document. The Firebase web configuration and API key are intentionally public client identifiers; private progress is protected by Authentication and the Firestore rules.
+Each account can only read and write its own `users/{uid}` document. Firebase web configuration is returned to the browser at runtime—as required by the Firebase web SDK—but it is kept out of the tracked source and Git commits. Private progress is protected by Authentication and the Firestore rules.
 
 ## Daily behavior
 

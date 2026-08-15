@@ -16,25 +16,34 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyA8H-FgW4MtbHeurzRhv2oXTIxKzwd7wnI",
-  authDomain: "rise-and-rep.firebaseapp.com",
-  projectId: "rise-and-rep",
-  storageBucket: "rise-and-rep.firebasestorage.app",
-  messagingSenderId: "288769890364",
-  appId: "1:288769890364:web:37737a5069c36c17fb4b39",
-  measurementId: "G-TQ1WBC2RD1"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const database = getFirestore(app);
-const provider = new GoogleAuthProvider();
-provider.setCustomParameters({ prompt: "select_account" });
+let auth = null;
+let database = null;
+let provider = null;
+let servicesPromise = null;
 
 let currentUser = null;
 let stopProgressListener = null;
 let callbacks = {};
+
+async function initializeServices() {
+  if (auth && database && provider) return;
+  if (servicesPromise) return servicesPromise;
+
+  servicesPromise = fetch("/api/firebase-config", { cache: "no-store" }).then(async (response) => {
+    const config = await response.json().catch(() => ({}));
+    if (!response.ok || !config.apiKey) throw new Error(config.message || "Cloud sync is not configured yet.");
+    const app = initializeApp(config);
+    auth = getAuth(app);
+    database = getFirestore(app);
+    provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+  }).catch((error) => {
+    servicesPromise = null;
+    throw error;
+  });
+
+  return servicesPromise;
+}
 
 function publicUser(user) {
   if (!user) return null;
@@ -66,6 +75,7 @@ function watchProgress(user) {
 
 export async function initializeCloud(nextCallbacks = {}) {
   callbacks = nextCallbacks;
+  await initializeServices();
   await setPersistence(auth, browserLocalPersistence);
   onAuthStateChanged(auth, (user) => {
     currentUser = user;
