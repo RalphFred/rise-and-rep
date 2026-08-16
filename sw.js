@@ -1,11 +1,12 @@
 const CACHE_PREFIX = "rise-rep-";
-const STATIC_CACHE = `${CACHE_PREFIX}static-v7`;
-const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-v7`;
+const STATIC_CACHE = `${CACHE_PREFIX}static-v8`;
+const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-v8`;
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./progress-sync-core.js",
+  "./sync-code-core.js",
   "./firebase-sync.js",
   "./exercise-visuals.js",
   "./app.js",

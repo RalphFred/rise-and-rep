@@ -1,11 +1,11 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import {
   browserLocalPersistence,
+  createUserWithEmailAndPassword,
   getAuth,
-  GoogleAuthProvider,
   onAuthStateChanged,
   setPersistence,
-  signInWithPopup,
+  signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
@@ -18,7 +18,6 @@ import {
 
 let auth = null;
 let database = null;
-let provider = null;
 let servicesPromise = null;
 
 let currentUser = null;
@@ -26,7 +25,7 @@ let stopProgressListener = null;
 let callbacks = {};
 
 async function initializeServices() {
-  if (auth && database && provider) return;
+  if (auth && database) return;
   if (servicesPromise) return servicesPromise;
 
   servicesPromise = fetch("/api/firebase-config", { cache: "no-store" }).then(async (response) => {
@@ -35,8 +34,6 @@ async function initializeServices() {
     const app = initializeApp(config);
     auth = getAuth(app);
     database = getFirestore(app);
-    provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
   }).catch((error) => {
     servicesPromise = null;
     throw error;
@@ -49,9 +46,8 @@ function publicUser(user) {
   if (!user) return null;
   return {
     uid: user.uid,
-    displayName: user.displayName || "Rise & Rep player",
-    email: user.email || "",
-    photoURL: user.photoURL || ""
+    displayName: "Sync code account",
+    accountType: "code"
   };
 }
 
@@ -77,15 +73,26 @@ export async function initializeCloud(nextCallbacks = {}) {
   callbacks = nextCallbacks;
   await initializeServices();
   await setPersistence(auth, browserLocalPersistence);
-  onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, async (user) => {
+    if (user && !user.providerData.some((provider) => provider.providerId === "password")) {
+      await signOut(auth);
+      return;
+    }
     currentUser = user;
     watchProgress(user);
     callbacks.onAuthChange?.(publicUser(user));
   }, (error) => callbacks.onStatus?.("error", error.message));
 }
 
-export async function signInWithGoogle() {
-  const result = await signInWithPopup(auth, provider);
+export async function createCodeAccount(code) {
+  const email = await window.RiseRepSyncCode.codeToEmail(code);
+  const result = await createUserWithEmailAndPassword(auth, email, window.RiseRepSyncCode.formatCode(code));
+  return publicUser(result.user);
+}
+
+export async function signInWithCode(code) {
+  const email = await window.RiseRepSyncCode.codeToEmail(code);
+  const result = await signInWithEmailAndPassword(auth, email, window.RiseRepSyncCode.formatCode(code));
   return publicUser(result.user);
 }
 
@@ -106,8 +113,8 @@ export async function syncProgress(localProgress) {
       ...progress,
       profile: {
         displayName: profile.displayName,
-        email: profile.email,
-        photoURL: profile.photoURL
+        email: "",
+        photoURL: ""
       },
       updatedAt: serverTimestamp()
     });

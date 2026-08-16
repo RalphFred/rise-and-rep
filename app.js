@@ -1,5 +1,6 @@
 const STORAGE_KEY = "riseAndRep.v1";
 const CLOUD_PROFILE_KEY = "riseAndRep.cloudProfile.v1";
+const CLOUD_CODE_KEY = "riseAndRep.syncCode.v1";
 const WORKOUT_DAYS = new Set([1, 3, 5, 6]);
 const REMINDER_TIME = "6:30 AM";
 const REMINDER_TIME_ZONE = "Lagos time";
@@ -716,7 +717,8 @@ function updateConnectionStatus(announce = false) {
 
 function loadCloudProfile() {
   try {
-    return JSON.parse(localStorage.getItem(CLOUD_PROFILE_KEY));
+    const profile = JSON.parse(localStorage.getItem(CLOUD_PROFILE_KEY));
+    return profile?.accountType === "code" ? profile : null;
   } catch {
     return null;
   }
@@ -777,23 +779,17 @@ function cloudStatusCopy() {
   if (!navigator.onLine) return "Offline — saved progress will sync when you reconnect.";
   if (cloudStatus === "connecting") return "Connecting securely…";
   if (cloudStatus === "syncing") return "Merging progress across your devices…";
-  if (cloudStatus === "synced") return "Progress synced across your signed-in devices.";
+  if (cloudStatus === "synced") return "Progress synced across your connected devices.";
   if (cloudStatus === "error") return "Sync paused. Your progress is still safe on this device.";
-  return cloudUser ? "Ready to sync your progress." : "Sign in once, then carry your streak between devices.";
+  return cloudUser ? "Ready to sync your progress." : "Create a progress key, or enter one from another device.";
 }
 
 function updateAccountButton() {
   if (!accountButton) return;
-  const name = cloudUser?.displayName || "your account";
   accountButton.classList.toggle("is-signed-in", Boolean(cloudUser));
   accountButton.classList.toggle("is-syncing", cloudStatus === "syncing" || cloudStatus === "connecting");
-  accountButton.setAttribute("aria-label", cloudUser ? `Open sync account for ${name}` : "Sign in and sync progress");
-
-  if (cloudUser?.photoURL) {
-    accountButton.innerHTML = `<img src="${escapeHtml(cloudUser.photoURL)}" alt="" referrerpolicy="no-referrer"><i aria-hidden="true"></i>`;
-  } else {
-    accountButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16.5h8M9 8.5a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z"/><path d="M5.5 19c.4-3 2.6-4.5 6.5-4.5s6.1 1.5 6.5 4.5"/></svg><span>${cloudUser ? "YOU" : "SYNC"}</span>`;
-  }
+  accountButton.setAttribute("aria-label", cloudUser ? "Open connected progress sync" : "Connect progress sync");
+  accountButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="3"/><path d="M11 12h9m-3 0v3m-3-3v2"/></svg><span>${cloudUser ? "ON" : "SYNC"}</span><i aria-hidden="true"></i>`;
 }
 
 async function initCloudSync() {
@@ -854,29 +850,45 @@ function scheduleCloudSync(delay = 900) {
   }, delay);
 }
 
-function accountProfileHtml() {
-  const fallback = (cloudUser?.displayName || "R").trim().charAt(0).toUpperCase();
-  const avatar = cloudUser?.photoURL
-    ? `<img src="${escapeHtml(cloudUser.photoURL)}" alt="" referrerpolicy="no-referrer">`
-    : `<span aria-hidden="true">${escapeHtml(fallback)}</span>`;
-  return `<div class="account-profile">
-    <div class="account-avatar">${avatar}</div>
-    <div><strong>${escapeHtml(cloudUser?.displayName || "Rise & Rep player")}</strong><span>${escapeHtml(cloudUser?.email || "Signed-in account")}</span></div>
-  </div>`;
+function storedSyncCode() {
+  const code = localStorage.getItem(CLOUD_CODE_KEY) || "";
+  return window.RiseRepSyncCode?.isValidCode(code) ? window.RiseRepSyncCode.formatCode(code) : "";
+}
+
+function saveSyncCode(code) {
+  if (code) localStorage.setItem(CLOUD_CODE_KEY, window.RiseRepSyncCode.formatCode(code));
+  else localStorage.removeItem(CLOUD_CODE_KEY);
+}
+
+function connectedAccountHtml() {
+  const code = storedSyncCode();
+  return `<div class="sync-connected-card">
+    <span class="sync-connected-mark" aria-hidden="true">✓</span>
+    <div><strong>SYNC CONNECTED</strong><span>Your completed days and trophies travel with this key.</span></div>
+  </div>
+  ${code ? `<div class="saved-code-row"><code id="savedSyncCode" data-code="${escapeHtml(code)}">RR-••••-••••-••••-••••</code><button id="revealSyncCode" type="button">SHOW &amp; COPY</button></div>` : ""}`;
 }
 
 function showAccountSheet() {
   const signedIn = Boolean(cloudUser);
-  const signInReady = cloudReady && Boolean(cloudModule);
   sheetRoot.innerHTML = `<div class="sheet-backdrop" role="presentation"><section class="sheet account-sheet" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
-    <p class="eyebrow">Cloud Save</p>
-    <h2 id="accountTitle">${signedIn ? "Your Progress Travels." : "Keep Every Rep."}</h2>
-    ${signedIn ? accountProfileHtml() : `<p>Sign in with Google to merge completed quests, XP, streak history, levels, and trophies across your phone and iPad.</p>`}
+    <p class="eyebrow">Progress Key</p>
+    <h2 id="accountTitle">${signedIn ? "Your Reps Travel." : "One Key. Every Device."}</h2>
+    ${signedIn ? connectedAccountHtml() : `<p>Create one private key, then enter it on your phone, iPad, or another browser to carry your streak with you.</p>
+      <div class="sync-code-panel">
+        <span class="sync-option-label">FIRST DEVICE</span>
+        <button id="createSyncCode" class="sync-primary-button" type="button">CREATE MY PROGRESS KEY <span aria-hidden="true">→</span></button>
+        <div class="sync-divider"><span>OR</span></div>
+        <label class="sync-code-label" for="syncCodeInput">I ALREADY HAVE A KEY</label>
+        <input id="syncCodeInput" class="sync-code-input" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="22" placeholder="RR-XXXX-XXXX-XXXX-XXXX" aria-describedby="syncCodeHint">
+        <small id="syncCodeHint">Enter all 16 characters. Dashes are optional.</small>
+        <button id="connectSyncCode" class="sync-primary-button is-outline" type="button">CONNECT THIS DEVICE</button>
+      </div>`}
     <div class="cloud-status ${cloudStatus === "error" ? "has-error" : ""}"><i aria-hidden="true"></i><span id="cloudStatusText">${escapeHtml(cloudStatusCopy())}</span></div>
-    <p class="account-footnote">Active workout timers and notification permission stay on each device. Your local workout still works offline.</p>
+    <p class="account-footnote">Your key is your password. Keep it private and save it somewhere safe—we cannot recover it. Timers and notification permission stay on each device.</p>
     <div class="sheet-actions">
-      ${signedIn ? `<button id="syncNow" class="google-button" type="button">SYNC NOW <span aria-hidden="true">↻</span></button><button id="signOutAccount" class="secondary-button" type="button">SIGN OUT</button>` : `<button id="signInGoogle" class="google-button" type="button" ${signInReady ? "" : "disabled"}><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M22.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h6a5.2 5.2 0 0 1-2.2 3.3v2.8h3.6c2.1-2 3.2-4.8 3.2-8.2Z"/><path fill="#34a853" d="M12 23c3 0 5.5-1 7.4-2.6l-3.6-2.8c-1 .7-2.3 1.1-3.8 1.1-2.9 0-5.4-2-6.3-4.6H2v2.9A11.2 11.2 0 0 0 12 23Z"/><path fill="#fbbc05" d="M5.7 14.1a6.7 6.7 0 0 1 0-4.2V7H2a11.2 11.2 0 0 0 0 10l3.7-2.9Z"/><path fill="#ea4335" d="M12 5.3c1.6 0 3 .6 4.2 1.7l3.2-3.2A10.7 10.7 0 0 0 2 7l3.7 2.9C6.6 7.2 9.1 5.3 12 5.3Z"/></svg>${signInReady ? "CONTINUE WITH GOOGLE" : "PREPARING SIGN-IN…"}</button>`}
-      <button id="closeAccountSheet" class="secondary-button" type="button">NOT NOW</button>
+      ${signedIn ? `<button id="syncNow" class="sync-primary-button" type="button">SYNC NOW <span aria-hidden="true">↻</span></button><button id="signOutAccount" class="secondary-button" type="button">SIGN OUT ON THIS DEVICE</button>` : ""}
+      <button id="closeAccountSheet" class="secondary-button" type="button">${signedIn ? "DONE" : "NOT NOW"}</button>
     </div>
   </section></div>`;
 
@@ -884,47 +896,148 @@ function showAccountSheet() {
   document.querySelector(".sheet-backdrop")?.addEventListener("click", (event) => {
     if (event.target.classList.contains("sheet-backdrop")) closeSheet();
   });
-  document.querySelector("#signInGoogle")?.addEventListener("click", handleGoogleSignIn);
+  const codeInput = document.querySelector("#syncCodeInput");
+  codeInput?.addEventListener("blur", () => {
+    codeInput.value = window.RiseRepSyncCode.formatCode(codeInput.value);
+  });
+  codeInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") handleCodeSignIn();
+  });
+  document.querySelector("#createSyncCode")?.addEventListener("click", handleCreateSyncCode);
+  document.querySelector("#connectSyncCode")?.addEventListener("click", handleCodeSignIn);
+  document.querySelector("#revealSyncCode")?.addEventListener("click", handleRevealSyncCode);
   document.querySelector("#signOutAccount")?.addEventListener("click", handleCloudSignOut);
   document.querySelector("#syncNow")?.addEventListener("click", () => {
     lastCloudFingerprint = "";
     scheduleCloudSync(0);
   });
-  if (!signedIn && navigator.onLine && !signInReady) {
+  if (!signedIn && navigator.onLine && !cloudReady) {
     initCloudSync().then(() => {
-      if (document.querySelector(".account-sheet")) showAccountSheet();
+      const statusNode = document.querySelector("#cloudStatusText");
+      if (statusNode) statusNode.textContent = cloudStatusCopy();
     }).catch(() => {});
   }
 }
 
-async function handleGoogleSignIn() {
-  const button = document.querySelector("#signInGoogle");
-  if (!navigator.onLine) {
-    showToast("Connect to the internet to sign in.");
-    return;
-  }
-  if (!cloudReady || !cloudModule) {
-    showToast("Sign-in is still preparing. Try again in a moment.");
-    return;
-  }
-  if (button) {
-    button.disabled = true;
-    button.lastChild.textContent = " SIGNING IN…";
-  }
+function setAccountBusy(button, label) {
+  if (!button) return;
+  button.disabled = true;
+  button.textContent = label;
+}
 
+function friendlyCodeError(error) {
+  if (error?.code === "auth/invalid-credential" || error?.code === "auth/user-not-found" || error?.code === "auth/wrong-password") return "That progress key was not found. Check every character.";
+  if (error?.code === "auth/email-already-in-use") return "That key already exists. Create a new one or connect with the existing key.";
+  if (error?.code === "auth/operation-not-allowed") return "Code sign-in needs Email/Password enabled in Firebase Authentication.";
+  if (error?.code === "auth/too-many-requests") return "Too many attempts. Wait a little, then try again.";
+  return error?.message || "Could not connect this device.";
+}
+
+async function handleCreateSyncCode() {
+  const button = document.querySelector("#createSyncCode");
+  if (!navigator.onLine) {
+    showToast("Connect to the internet to create your key.");
+    return;
+  }
+  setAccountBusy(button, "CREATING SECURE KEY…");
   try {
-    await cloudModule.signInWithGoogle();
-    showToast("Google account connected. Progress is syncing.");
+    const module = await initCloudSync();
+    const code = window.RiseRepSyncCode.generateCode();
+    await module.createCodeAccount(code);
+    saveSyncCode(code);
+    showCreatedCodeSheet(code);
+    showToast("Progress key created. Save it now.");
   } catch (error) {
-    if (error.code !== "auth/popup-closed-by-user") showToast(error.message || "Google sign-in did not finish.");
+    showToast(friendlyCodeError(error));
     showAccountSheet();
   }
+}
+
+async function handleCodeSignIn() {
+  const input = document.querySelector("#syncCodeInput");
+  const button = document.querySelector("#connectSyncCode");
+  const code = input?.value || "";
+  if (!window.RiseRepSyncCode.isValidCode(code)) {
+    input?.focus();
+    input?.setAttribute("aria-invalid", "true");
+    showToast("Enter the complete 16-character progress key.");
+    return;
+  }
+  if (!navigator.onLine) {
+    showToast("Connect to the internet to connect this device.");
+    return;
+  }
+  setAccountBusy(button, "CONNECTING…");
+  try {
+    const module = await initCloudSync();
+    const formatted = window.RiseRepSyncCode.formatCode(code);
+    await module.signInWithCode(formatted);
+    saveSyncCode(formatted);
+    showToast("Device connected. Progress is syncing.");
+    showAccountSheet();
+  } catch (error) {
+    showToast(friendlyCodeError(error));
+    showAccountSheet();
+  }
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.appendChild(field);
+  field.select();
+  document.execCommand("copy");
+  field.remove();
+}
+
+async function handleRevealSyncCode() {
+  const node = document.querySelector("#savedSyncCode");
+  const button = document.querySelector("#revealSyncCode");
+  const code = node?.dataset.code;
+  if (!code) return;
+  node.textContent = code;
+  if (button) button.textContent = "COPIED";
+  try {
+    await copyText(code);
+    showToast("Progress key copied. Keep it private.");
+  } catch {
+    showToast("Key revealed. Press and hold it to copy.");
+  }
+}
+
+function showCreatedCodeSheet(code) {
+  sheetRoot.innerHTML = `<div class="sheet-backdrop" role="presentation"><section class="sheet account-sheet created-code-sheet" role="dialog" aria-modal="true" aria-labelledby="createdCodeTitle">
+    <p class="eyebrow">Your New Progress Key</p>
+    <h2 id="createdCodeTitle">Save This Key.</h2>
+    <p>Use this exact key to connect Rise &amp; Rep on another phone, iPad, or browser.</p>
+    <button id="copyCreatedCode" class="created-code" type="button"><code>${escapeHtml(code)}</code><span>COPY KEY</span></button>
+    <div class="key-warning"><strong>NO RECOVERY</strong><span>We do not know your key and cannot send it back to you. Save it in your password manager.</span></div>
+    <div class="sheet-actions"><button id="finishCreatedCode" class="sync-primary-button" type="button">I SAVED IT</button></div>
+  </section></div>`;
+  document.querySelector("#copyCreatedCode")?.addEventListener("click", async () => {
+    try {
+      await copyText(code);
+      const label = document.querySelector("#copyCreatedCode span");
+      if (label) label.textContent = "COPIED ✓";
+      showToast("Progress key copied.");
+    } catch {
+      showToast("Press and hold the key to copy it.");
+    }
+  });
+  document.querySelector("#finishCreatedCode")?.addEventListener("click", () => {
+    showAccountSheet();
+  });
 }
 
 async function handleCloudSignOut() {
   try {
     const module = await initCloudSync();
     await module.signOutCurrentUser();
+    saveSyncCode("");
     closeSheet();
     showToast("Signed out. Progress remains safe on this device.");
   } catch (error) {

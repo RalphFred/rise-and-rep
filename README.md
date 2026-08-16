@@ -46,7 +46,7 @@ The notification UI is safe to deploy before the service is configured: it will 
 
 Keep the VAPID private key, Redis token, and cron secret out of Git. `.env*` files are ignored by default.
 
-## Google sign-in and cloud progress
+## Progress-key cloud sync
 
 Firebase Authentication and Cloud Firestore provide the small cloud layer. The workout remains local-first: it opens and records progress without a connection, then merges durable progress after the signed-in device reconnects.
 
@@ -54,22 +54,20 @@ Cloud sync includes completed days, XP, total checkpoints, levels, streak histor
 
 ### One-time Firebase setup
 
-1. In the [Firebase console](https://console.firebase.google.com/project/rise-and-rep/authentication/providers), open **Authentication → Sign-in method**, choose **Google**, and enable it.
-2. In **Authentication → Settings → Authorized domains**, add `rise-and-rep.vercel.app`.
-3. Open **Firestore Database**, create the database in Production mode, and choose the region you prefer.
-4. Add these values under **Vercel → Rise & Rep → Settings → Environment Variables**. Use the fields from Firebase's web-app configuration, and apply them to Production and Preview:
+1. In the [Firebase console](https://console.firebase.google.com/project/rise-and-rep/authentication/providers), open **Authentication → Sign-in method**, choose **Email/Password**, enable the first **Email/Password** switch, and save. Email-link sign-in is not needed. Google can stay disabled.
+2. Open **Firestore Database**, create the database in Production mode, and choose the region you prefer.
+3. Add these values under **Vercel → Rise & Rep → Settings → Environment Variables**. Use the fields from Firebase's web-app configuration, and apply them to Production and Preview:
 
    - `FIREBASE_API_KEY`
-   - `FIREBASE_AUTH_DOMAIN` — set this to `rise-and-rep.vercel.app`, not the default `firebaseapp.com` domain
+   - `FIREBASE_AUTH_DOMAIN`
    - `FIREBASE_PROJECT_ID`
    - `FIREBASE_STORAGE_BUCKET`
    - `FIREBASE_MESSAGING_SENDER_ID`
    - `FIREBASE_APP_ID`
    - `FIREBASE_MEASUREMENT_ID` (optional)
 
-5. Redeploy Rise & Rep so Vercel Functions receive the environment variables.
-6. In the Google Cloud Console OAuth client used by Firebase Authentication, add `https://rise-and-rep.vercel.app/__/auth/handler` under **Authorized redirect URIs**. The Vercel rewrite proxies this helper path transparently to Firebase so Chrome and Safari do not lose sign-in state to cross-site storage partitioning.
-7. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
+4. Redeploy Rise & Rep so Vercel Functions receive the environment variables.
+5. Publish the included `firestore.rules`. Either paste [firestore.rules](firestore.rules) into **Firestore Database → Rules**, or deploy from this folder:
 
    ```sh
    npx firebase-tools login
@@ -77,7 +75,9 @@ Cloud sync includes completed days, XP, total checkpoints, levels, streak histor
    npx firebase-tools deploy --only firestore:rules
    ```
 
-Each account can only read and write its own `users/{uid}` document. Firebase web configuration is returned to the browser at runtime—as required by the Firebase web SDK—but it is kept out of the tracked source and Git commits. Private progress is protected by Authentication and the Firestore rules.
+Each progress key creates a Firebase Email/Password account using a one-way SHA-256-derived internal address. The readable key is the password. It is never stored in Firestore and the internal address is not shown to the player. Each account can only read and write its own `users/{uid}` document. Firebase web configuration is returned to the browser at runtime—as required by the Firebase web SDK—but it is kept out of the tracked source and Git commits. Private progress is protected by Authentication and the Firestore rules.
+
+There is no key-recovery flow. The player must save the generated key in a password manager. Anyone with the key can connect to that progress, so it should not be shared publicly.
 
 ## Daily behavior
 
@@ -93,7 +93,7 @@ Each account can only read and write its own `users/{uid}` document. Firebase we
 - The Morning Reminder card registers or removes a Web Push subscription for the current device.
 - The scheduled reminder uses a Vercel Function and Redis because iOS cannot reliably run an offline web timer after the PWA closes.
 - Workout screens remain offline-capable. The device needs an internet connection when a push is delivered.
-- Google sign-in uses a user-initiated popup, avoiding cross-site redirect-storage problems on Safari while the app is hosted on Vercel.
-- Signed-in progress is merged transactionally, so signing in on a second device does not overwrite completed history already saved on either device.
+- Progress-key sign-in has no popup or redirect, so it works consistently from the installed PWA and ordinary Safari/Chrome tabs.
+- Connected progress is merged transactionally, so adding a second device does not overwrite completed history already saved on either device.
 
-Without sign-in, progress stays on the current browser/device. After Google sign-in, durable progress follows the same account across devices.
+Without a progress key, progress stays on the current browser/device. After creating or entering a key, durable progress follows that key across devices. Signing out removes the saved key and cloud access from that device while leaving its existing local progress intact.

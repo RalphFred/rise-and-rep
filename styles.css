@@ -225,6 +225,10 @@ input:focus-visible {
   background: var(--green);
 }
 
+.account-button:not(.is-signed-in) i {
+  display: none;
+}
+
 .account-button.is-signed-in {
   border-color: var(--green);
 }
@@ -1795,64 +1799,242 @@ h3 {
   margin-bottom: 7px;
 }
 
+.account-sheet {
+  max-height: min(92dvh, 760px);
+  overflow-y: auto;
+}
+
 .account-sheet h2 {
   font-size: clamp(36px, 11vw, 50px);
   line-height: 0.9;
 }
 
-.account-profile {
-  display: flex;
-  gap: 13px;
-  align-items: center;
-  margin: 17px 0;
-  padding: 12px;
-  border-block: 2px solid var(--blue);
-  background: var(--blue-wash);
+.sync-code-panel {
+  margin: 18px 0 14px;
+  padding: 15px;
+  border: 2px solid var(--blue);
+  border-radius: 10px;
+  background: linear-gradient(145deg, var(--blue-wash), var(--white) 58%);
+  box-shadow: 4px 4px 0 var(--blue);
 }
 
-.account-avatar {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  place-items: center;
-  border-radius: 8px;
+.sync-option-label,
+.sync-code-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--blue);
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.sync-primary-button {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 15px;
+  border: 2px solid var(--blue);
+  border-radius: 7px;
   color: var(--white);
   background: var(--blue);
   font-family: var(--display);
-  font-size: 25px;
+  font-size: 18px;
   font-weight: 900;
-  transform: rotate(-2deg);
+  letter-spacing: 0.05em;
+  cursor: pointer;
 }
 
-.account-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.account-profile strong,
-.account-profile span {
-  display: block;
-}
-
-.account-profile strong {
+.sync-primary-button.is-outline {
+  min-height: 46px;
+  margin-top: 12px;
   color: var(--blue);
-  font-family: var(--display);
-  font-size: 21px;
+  background: var(--white);
+}
+
+.sync-primary-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.sync-primary-button:active {
+  transform: translateY(1px);
+}
+
+.sync-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 10px;
   font-weight: 900;
-  line-height: 1;
+  letter-spacing: 0.15em;
+}
+
+.sync-divider::before,
+.sync-divider::after {
+  height: 1px;
+  flex: 1;
+  background: rgba(10, 67, 163, 0.25);
+  content: "";
+}
+
+.sync-code-input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 12px;
+  border: 2px solid #7898cb;
+  border-radius: 7px;
+  outline: none;
+  color: var(--blue);
+  background: var(--white);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(14px, 4.2vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.025em;
   text-transform: uppercase;
 }
 
-.account-profile span {
-  margin-top: 4px;
-  overflow: hidden;
+.sync-code-input:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(248, 91, 15, 0.13);
+}
+
+.sync-code-input[aria-invalid="true"] {
+  border-color: var(--orange);
+}
+
+.sync-code-panel small {
+  display: block;
+  margin-top: 6px;
   color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.sync-connected-card {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  margin: 17px 0 12px;
+  padding: 14px;
+  border: 2px solid var(--green);
+  border-radius: 9px;
+  color: var(--green);
+  background: var(--green-wash);
+}
+
+.sync-connected-mark {
+  display: grid;
+  width: 43px;
+  height: 43px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--white);
+  background: var(--green);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.sync-connected-card strong,
+.sync-connected-card span {
+  display: block;
+}
+
+.sync-connected-card strong {
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: 0.04em;
+}
+
+.sync-connected-card div span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.saved-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px dashed #7898cb;
+  border-radius: 7px;
+  background: var(--blue-wash);
+}
+
+.saved-code-row code {
+  overflow: hidden;
+  color: var(--blue);
+  font-size: clamp(10px, 3.1vw, 14px);
+  font-weight: 800;
   white-space: nowrap;
+}
+
+.saved-code-row button {
+  flex: 0 0 auto;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--white);
+  background: var(--blue);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.created-code {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+  margin: 18px 0 13px;
+  padding: 19px 10px 13px;
+  border: 2px dashed var(--orange);
+  border-radius: 10px;
+  color: var(--blue);
+  background: #fff7ef;
+  cursor: pointer;
+}
+
+.created-code code {
+  font-size: clamp(14px, 4.4vw, 20px);
+  font-weight: 900;
+  letter-spacing: 0.025em;
+}
+
+.created-code span {
+  color: var(--orange-dark);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.key-warning {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 11px;
+  border-left: 4px solid var(--orange);
+  background: #fff0e8;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.key-warning strong {
+  color: var(--orange-dark);
+  font-family: var(--display);
+  letter-spacing: 0.06em;
 }
 
 .cloud-status {
@@ -1887,41 +2069,6 @@ h3 {
 .account-sheet .account-footnote {
   margin-bottom: 15px;
   font-size: 11px;
-}
-
-.google-button {
-  display: flex;
-  width: 100%;
-  min-height: 52px;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  border: 0;
-  border-radius: 7px;
-  color: var(--white);
-  background: var(--blue);
-  font-family: var(--display);
-  font-size: 18px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-}
-
-.google-button svg {
-  width: 22px;
-  height: 22px;
-  padding: 2px;
-  border-radius: 3px;
-  background: var(--white);
-}
-
-.google-button:disabled {
-  cursor: wait;
-  opacity: 0.6;
-}
-
-.google-button:active {
-  transform: scale(0.99);
 }
 
 .toast {
